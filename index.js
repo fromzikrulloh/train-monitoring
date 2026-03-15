@@ -146,10 +146,13 @@ async function checkTrains() {
         (e) =>
           `🚂 ${e.train} (${e.departure.split(" ")[1]}) — ${e.carType} (${e.class}): ${e.seats} мест, ${formatPrice(e.price)}`
       );
+      const cheapStatus = cheapAvailable.length > 0
+        ? "🔔 Есть дешёвые — см. следующее сообщение!"
+        : `💤 Дешёвых (${formatPrice(MIN_TARIFF)}–${formatPrice(MAX_TARIFF)}) пока нет`;
       const silentMsg =
         `📋 <b>Обзор мест</b> [${now}]\n\n` +
         lines.join("\n") +
-        `\n\n${cheapAvailable.length > 0 ? "🔔 Есть дешёвые — см. следующее сообщение!" : "💤 Дешёвых (${formatPrice(MIN_TARIFF)}–${formatPrice(MAX_TARIFF)}) пока нет"}`;
+        `\n\n` + cheapStatus;
 
       await sendTelegram(silentMsg, true);
       console.log(`   📋 Отправил обзор: ${allAvailable.length} вариант(ов)`);
