@@ -42,11 +42,12 @@ function httpsRequest(options, body) {
   });
 }
 
-function sendTelegram(message) {
+function sendTelegram(message, silent = false) {
   const body = JSON.stringify({
     chat_id: TELEGRAM_CHAT_ID,
     text: message,
     parse_mode: "HTML",
+    disable_notification: silent,
   });
 
   const options = {
@@ -92,8 +93,6 @@ function formatPrice(sum) {
 }
 
 // --- Main polling logic ---
-let notifiedTrains = new Set(); // track already notified to avoid spam
-
 async function checkTrains() {
   const now = new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" });
   console.log(`\n🔍 [${now}] Проверяю поезда...`);
@@ -110,72 +109,68 @@ async function checkTrains() {
 
     if (trains.length === 0) {
       console.log("   Поездов не найдено");
+      await sendTelegram(`📋 [${now}]\nПоездов не найдено`, true);
       return;
     }
 
-    let foundAny = false;
+    // Collect all available seats across all trains
+    const allAvailable = [];
+    const cheapAvailable = [];
 
     for (const train of trains) {
-      const matchingCars = [];
-
       for (const car of train.cars || []) {
         for (const tariff of car.tariffs || []) {
-          if (
-            tariff.tariff >= MIN_TARIFF &&
-            tariff.tariff <= MAX_TARIFF &&
-            tariff.freeSeats > 0
-          ) {
-            matchingCars.push({
-              type: car.type,
+          if (tariff.freeSeats > 0) {
+            const entry = {
+              train: train.number,
+              brand: train.brand,
+              departure: train.departureDate,
+              timeOnWay: train.timeOnWay,
+              carType: car.type,
               class: tariff.classServiceType,
               seats: tariff.freeSeats,
               price: tariff.tariff,
-            });
+            };
+            allAvailable.push(entry);
+            if (tariff.tariff >= MIN_TARIFF && tariff.tariff <= MAX_TARIFF) {
+              cheapAvailable.push(entry);
+            }
           }
         }
       }
-
-      if (matchingCars.length > 0) {
-        foundAny = true;
-
-        // Build a unique key per train+available options
-        const key = `${train.number}_${matchingCars.map((c) => `${c.class}:${c.seats}`).join(",")}`;
-
-        if (notifiedTrains.has(key)) {
-          console.log(`   ✅ ${train.number} — уже уведомляли, пропускаю`);
-          continue;
-        }
-
-        notifiedTrains.add(key);
-
-        const carsText = matchingCars
-          .map(
-            (c) =>
-              `  • ${c.type} (${c.class}) — <b>${c.seats} мест</b>, ${formatPrice(c.price)}`
-          )
-          .join("\n");
-
-        const message =
-          `🚂 <b>МЕСТА НАЙДЕНЫ!</b>\n\n` +
-          `Поезд: <b>${train.number}</b> (${train.brand})\n` +
-          `Маршрут: ${train.originRoute.depStationName} → ${train.originRoute.arvStationName}\n` +
-          `Отправление: <b>${train.departureDate}</b>\n` +
-          `В пути: ${train.timeOnWay}\n` +
-          `Участок: ${train.subRoute.depStationName} → ${train.subRoute.arvStationName}\n\n` +
-          `Вагоны:\n${carsText}\n\n` +
-          `🔗 https://eticket.railway.uz/uz/home`;
-
-        console.log(`   🎉 ${train.number} — есть места! Отправляю в Telegram...`);
-        await sendTelegram(message);
-      } else {
-        console.log(
-          `   ❌ ${train.number} (${train.departureDate}) — нет мест в диапазоне ${formatPrice(MIN_TARIFF)}–${formatPrice(MAX_TARIFF)}`
-        );
-      }
     }
 
-    if (!foundAny) {
-      console.log("   Подходящих мест пока нет. Жду...");
+    // --- Silent message: all available seats ---
+    if (allAvailable.length > 0) {
+      const lines = allAvailable.map(
+        (e) =>
+          `🚂 ${e.train} (${e.departure.split(" ")[1]}) — ${e.carType} (${e.class}): ${e.seats} мест, ${formatPrice(e.price)}`
+      );
+      const silentMsg =
+        `📋 <b>Обзор мест</b> [${now}]\n\n` +
+        lines.join("\n") +
+        `\n\n${cheapAvailable.length > 0 ? "🔔 Есть дешёвые — см. следующее сообщение!" : "💤 Дешёвых (${formatPrice(MIN_TARIFF)}–${formatPrice(MAX_TARIFF)}) пока нет"}`;
+
+      await sendTelegram(silentMsg, true);
+      console.log(`   📋 Отправил обзор: ${allAvailable.length} вариант(ов)`);
+    } else {
+      await sendTelegram(`📋 [${now}]\nМест нет ни на один поезд`, true);
+      console.log("   Мест нет вообще");
+    }
+
+    // --- Loud message: cheap seats found! ---
+    if (cheapAvailable.length > 0) {
+      const lines = cheapAvailable.map(
+        (e) =>
+          `  • ${e.train} (${e.brand}) — ${e.departure}\n    ${e.carType} (${e.class}): <b>${e.seats} мест</b>, <b>${formatPrice(e.price)}</b>`
+      );
+      const loudMsg =
+        `🚨🚨🚨 <b>ДЕШЁВЫЕ МЕСТА!</b>\n\n` +
+        lines.join("\n\n") +
+        `\n\n🔗 https://eticket.railway.uz/uz/home`;
+
+      await sendTelegram(loudMsg, false);
+      console.log(`   🔔 ДЕШЁВЫЕ МЕСТА! ${cheapAvailable.length} вариант(ов)`);
     }
   } catch (err) {
     console.error("❌ Ошибка:", err.message);
