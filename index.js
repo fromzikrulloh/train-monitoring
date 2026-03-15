@@ -15,8 +15,18 @@ const REQUEST_BODY = JSON.stringify({
       depStationCode: "2900000",
       arvStationCode: "2900920",
     },
+    backward: {
+      date: "2026-03-23",
+      depStationCode: "2900920",
+      arvStationCode: "2900000",
+    },
   },
 });
+
+const DIRECTION_LABELS = {
+  forward: "Toshkent → Margilon (18.03)",
+  backward: "Margilon → Toshkent (23.03)",
+};
 
 
 
@@ -105,46 +115,48 @@ async function checkTrains() {
       return;
     }
 
-    const trains = data?.data?.directions?.forward?.trains || [];
+    const directions = data?.data?.directions || {};
 
-    if (trains.length === 0) {
-      console.log("   Поездов не найдено");
-      await sendTelegram(`📋 [${now}]\nПоездов не найдено`, true);
-      return;
-    }
-
-    // Collect all available seats across all trains
     const allAvailable = [];
     const cheapAvailable = [];
 
-    for (const train of trains) {
-      for (const car of train.cars || []) {
-        for (const tariff of car.tariffs || []) {
-          if (tariff.freeSeats > 0) {
-            const entry = {
-              train: train.number,
-              brand: train.brand,
-              departure: train.departureDate,
-              timeOnWay: train.timeOnWay,
-              carType: car.type,
-              class: tariff.classServiceType,
-              seats: tariff.freeSeats,
-              price: tariff.tariff,
-            };
-            allAvailable.push(entry);
-            if (tariff.tariff >= MIN_TARIFF && tariff.tariff <= MAX_TARIFF) {
-              cheapAvailable.push(entry);
+    for (const [dirKey, dirData] of Object.entries(directions)) {
+      const route = DIRECTION_LABELS[dirKey] || dirKey;
+      for (const train of dirData.trains || []) {
+        for (const car of train.cars || []) {
+          for (const tariff of car.tariffs || []) {
+            if (tariff.freeSeats > 0) {
+              const entry = {
+                route,
+                train: train.number,
+                brand: train.brand,
+                departure: train.departureDate,
+                carType: car.type,
+                class: tariff.classServiceType,
+                seats: tariff.freeSeats,
+                price: tariff.tariff,
+              };
+              allAvailable.push(entry);
+              if (tariff.tariff >= MIN_TARIFF && tariff.tariff <= MAX_TARIFF) {
+                cheapAvailable.push(entry);
+              }
             }
           }
         }
       }
     }
 
+    if (Object.keys(directions).length === 0) {
+      console.log("   Поездов не найдено");
+      await sendTelegram(`📋 [${now}]\nПоездов не найдено`, true);
+      return;
+    }
+
     // --- Silent message: all available seats ---
     if (allAvailable.length > 0) {
       const lines = allAvailable.map(
         (e) =>
-          `🚂 ${e.train} (${e.departure.split(" ")[1]}) — ${e.carType} (${e.class}): ${e.seats} мест, ${formatPrice(e.price)}`
+          `🚂 ${e.route} | ${e.train} (${e.departure.split(" ")[1]}) — ${e.carType} (${e.class}): ${e.seats} мест, ${formatPrice(e.price)}`
       );
       const cheapStatus = cheapAvailable.length > 0
         ? "🔔 Есть дешёвые — см. следующее сообщение!"
@@ -165,7 +177,7 @@ async function checkTrains() {
     if (cheapAvailable.length > 0) {
       const lines = cheapAvailable.map(
         (e) =>
-          `  • ${e.train} (${e.brand}) — ${e.departure}\n    ${e.carType} (${e.class}): <b>${e.seats} мест</b>, <b>${formatPrice(e.price)}</b>`
+          `  • <b>${e.route}</b>\n    ${e.train} (${e.brand}) — ${e.departure}\n    ${e.carType} (${e.class}): <b>${e.seats} мест</b>, <b>${formatPrice(e.price)}</b>`
       );
       const loudMsg =
         `🚨🚨🚨 <b>ДЕШЁВЫЕ МЕСТА!</b>\n\n` +
@@ -187,7 +199,9 @@ async function checkTrains() {
     process.exit(1);
   }
 
-  console.log("🚆 Train Monitor — Toshkent → Margilon (18.03.2026)");
+  console.log("🚆 Train Monitor");
+  console.log("   ↗ Toshkent → Margilon (18.03.2026)");
+  console.log("   ↙ Margilon → Toshkent (23.03.2026)");
   console.log(`💰 Диапазон цен: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}`);
   console.log(`⏱  Интервал: каждые ${POLL_INTERVAL_MS / 1000 / 60} мин`);
   console.log("─".repeat(50));
@@ -195,8 +209,8 @@ async function checkTrains() {
   // Send startup message
   await sendTelegram(
     `🟢 <b>Мониторинг запущен</b>\n\n` +
-      `Маршрут: Toshkent → Margilon\n` +
-      `Дата: 18.03.2026\n` +
+      `↗ Toshkent → Margilon: 18.03.2026\n` +
+      `↙ Margilon → Toshkent: 23.03.2026\n` +
       `Цена: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}\n` +
       `Интервал: 5 мин`
   );
