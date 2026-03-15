@@ -199,6 +199,39 @@ async function checkTrains() {
     process.exit(1);
   }
 
+  // --- Graceful shutdown ---
+  // Registered before any async work so SIGTERM during startup is handled too
+  let pollInterval;
+  let shutdownInProgress = false;
+
+  async function gracefulShutdown(signal) {
+    if (shutdownInProgress) return;
+    shutdownInProgress = true;
+
+    console.log(`\n⏹  Получен ${signal}, завершаю...`);
+    clearInterval(pollInterval);
+
+    // Force exit if Telegram call hangs (Railway kills with SIGKILL after ~10s)
+    const forceExit = setTimeout(() => {
+      console.log("⚠️  Таймаут shutdown, принудительный выход.");
+      process.exit(0);
+    }, 5000);
+    forceExit.unref();
+
+    await sendTelegram(
+      `🔴 <b>Мониторинг остановлен</b>\n\n` +
+        `Сигнал: ${signal}\n` +
+        `Время: ${new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" })}`
+    );
+
+    clearTimeout(forceExit);
+    console.log("👋 Готово, выхожу.");
+    process.exit(0);
+  }
+
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+
   console.log("🚆 Train Monitor");
   console.log("   ↗ Toshkent → Margilon (18.03.2026)");
   console.log("   ↙ Margilon → Toshkent (23.03.2026)");
@@ -219,28 +252,5 @@ async function checkTrains() {
   await checkTrains();
 
   // Then poll
-  const pollInterval = setInterval(checkTrains, POLL_INTERVAL_MS);
-
-  // --- Graceful shutdown ---
-  let shutdownInProgress = false;
-
-  async function gracefulShutdown(signal) {
-    if (shutdownInProgress) return;
-    shutdownInProgress = true;
-
-    console.log(`\n⏹  Получен ${signal}, завершаю...`);
-    clearInterval(pollInterval);
-
-    await sendTelegram(
-      `🔴 <b>Мониторинг остановлен</b>\n\n` +
-        `Сигнал: ${signal}\n` +
-        `Время: ${new Date().toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" })}`
-    );
-
-    console.log("👋 Готово, выхожу.");
-    process.exit(0);
-  }
-
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  pollInterval = setInterval(checkTrains, POLL_INTERVAL_MS);
 })();
