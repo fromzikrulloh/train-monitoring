@@ -11,11 +11,6 @@ const MAX_TARIFF = 350_000;
 const REQUEST_BODY = JSON.stringify({
   directions: {
     forward: {
-      date: "2026-03-18",
-      depStationCode: "2900000",
-      arvStationCode: "2900920",
-    },
-    backward: {
       date: "2026-03-23",
       depStationCode: "2900920",
       arvStationCode: "2900000",
@@ -24,8 +19,7 @@ const REQUEST_BODY = JSON.stringify({
 });
 
 const DIRECTION_LABELS = {
-  forward: "Toshkent → Margilon (18.03)",
-  backward: "Margilon → Toshkent (23.03)",
+  forward: "Margilon → Toshkent (23.03)",
 };
 
 
@@ -233,7 +227,6 @@ async function checkTrains() {
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
   console.log("🚆 Train Monitor");
-  console.log("   ↗ Toshkent → Margilon (18.03.2026)");
   console.log("   ↙ Margilon → Toshkent (23.03.2026)");
   console.log(`💰 Диапазон цен: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}`);
   console.log(`⏱  Интервал: каждые ${POLL_INTERVAL_MS / 1000 / 60} мин`);
@@ -242,7 +235,6 @@ async function checkTrains() {
   // Send startup message
   await sendTelegram(
     `🟢 <b>Мониторинг запущен</b>\n\n` +
-      `↗ Toshkent → Margilon: 18.03.2026\n` +
       `↙ Margilon → Toshkent: 23.03.2026\n` +
       `Цена: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}\n` +
       `Интервал: 5 мин`
