@@ -5,21 +5,19 @@ const https = require("https");
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const MIN_TARIFF = 150_000;
-const MAX_TARIFF = 350_000;
 
 const REQUEST_BODY = JSON.stringify({
   directions: {
     forward: {
-      date: "2026-03-23",
-      depStationCode: "2900920",
+      date: "2026-05-31",
+      depStationCode: "2900701",
       arvStationCode: "2900000",
     },
   },
 });
 
 const DIRECTION_LABELS = {
-  forward: "Margilon → Toshkent (23.03)",
+  forward: "Quva → Toshkent (31.05)",
 };
 
 
@@ -112,7 +110,6 @@ async function checkTrains() {
     const directions = data?.data?.directions || {};
 
     const allAvailable = [];
-    const cheapAvailable = [];
 
     for (const [dirKey, dirData] of Object.entries(directions)) {
       const route = DIRECTION_LABELS[dirKey] || dirKey;
@@ -120,7 +117,7 @@ async function checkTrains() {
         for (const car of train.cars || []) {
           for (const tariff of car.tariffs || []) {
             if (tariff.freeSeats > 0) {
-              const entry = {
+              allAvailable.push({
                 route,
                 train: train.number,
                 brand: train.brand,
@@ -129,11 +126,7 @@ async function checkTrains() {
                 class: tariff.classServiceType,
                 seats: tariff.freeSeats,
                 price: tariff.tariff,
-              };
-              allAvailable.push(entry);
-              if (tariff.tariff >= MIN_TARIFF && tariff.tariff <= MAX_TARIFF) {
-                cheapAvailable.push(entry);
-              }
+              });
             }
           }
         }
@@ -146,40 +139,22 @@ async function checkTrains() {
       return;
     }
 
-    // --- Silent message: all available seats ---
+    // --- Loud message: any seats available! ---
     if (allAvailable.length > 0) {
       const lines = allAvailable.map(
-        (e) =>
-          `🚂 ${e.route} | ${e.train} (${e.departure.split(" ")[1]}) — ${e.carType} (${e.class}): ${e.seats} мест, ${formatPrice(e.price)}`
-      );
-      const cheapStatus = cheapAvailable.length > 0
-        ? "🔔 Есть дешёвые — см. следующее сообщение!"
-        : `💤 Дешёвых (${formatPrice(MIN_TARIFF)}–${formatPrice(MAX_TARIFF)}) пока нет`;
-      const silentMsg =
-        `📋 <b>Обзор мест</b> [${now}]\n\n` +
-        lines.join("\n") +
-        `\n\n` + cheapStatus;
-
-      await sendTelegram(silentMsg, true);
-      console.log(`   📋 Отправил обзор: ${allAvailable.length} вариант(ов)`);
-    } else {
-      await sendTelegram(`📋 [${now}]\nМест нет ни на один поезд`, true);
-      console.log("   Мест нет вообще");
-    }
-
-    // --- Loud message: cheap seats found! ---
-    if (cheapAvailable.length > 0) {
-      const lines = cheapAvailable.map(
         (e) =>
           `  • <b>${e.route}</b>\n    ${e.train} (${e.brand}) — ${e.departure}\n    ${e.carType} (${e.class}): <b>${e.seats} мест</b>, <b>${formatPrice(e.price)}</b>`
       );
       const loudMsg =
-        `🚨🚨🚨 <b>ДЕШЁВЫЕ МЕСТА!</b>\n\n` +
+        `🚨🚨🚨 <b>ПОЯВИЛИСЬ МЕСТА!</b>\n\n` +
         lines.join("\n\n") +
         `\n\n🔗 https://eticket.railway.uz/uz/home`;
 
       await sendTelegram(loudMsg, false);
-      console.log(`   🔔 ДЕШЁВЫЕ МЕСТА! ${cheapAvailable.length} вариант(ов)`);
+      console.log(`   🔔 ПОЯВИЛИСЬ МЕСТА! ${allAvailable.length} вариант(ов)`);
+    } else {
+      await sendTelegram(`📋 [${now}]\nМест нет`, true);
+      console.log("   Мест нет");
     }
   } catch (err) {
     console.error("❌ Ошибка:", err.message);
@@ -227,16 +202,15 @@ async function checkTrains() {
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
   console.log("🚆 Train Monitor");
-  console.log("   ↙ Margilon → Toshkent (23.03.2026)");
-  console.log(`💰 Диапазон цен: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}`);
+  console.log("   ↙ Quva → Toshkent (31.05.2026)");
   console.log(`⏱  Интервал: каждые ${POLL_INTERVAL_MS / 1000 / 60} мин`);
   console.log("─".repeat(50));
 
   // Send startup message
   await sendTelegram(
     `🟢 <b>Мониторинг запущен</b>\n\n` +
-      `↙ Margilon → Toshkent: 23.03.2026\n` +
-      `Цена: ${formatPrice(MIN_TARIFF)} – ${formatPrice(MAX_TARIFF)}\n` +
+      `↙ Quva → Toshkent: 31.05.2026\n` +
+      `Алерт: любые свободные места\n` +
       `Интервал: 5 мин`
   );
 
